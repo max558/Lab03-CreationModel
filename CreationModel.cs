@@ -13,7 +13,7 @@ namespace CreationModel
     [Transaction(TransactionMode.Manual)]
     public class CreationModel : IExternalCommand
     {
-        public static List<Level> LeveList { get; set; } = new List<Level>();
+        public List<Level> LeveList { get; set; } = new List<Level>();
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
@@ -29,14 +29,13 @@ namespace CreationModel
             return Result.Succeeded;
         }
 
-        //
         /*
          *** === Получение уровня по его имени === ***
          * Входные данные: 
          * name - строковое имя уровня
          * Вывод: уровень
          */
-        public static Level GetLevelofName(string name)
+        private  Level GetLevelofName(string name)
         {
             if (name == string.Empty)
             {
@@ -58,7 +57,7 @@ namespace CreationModel
          * Выходные данные:
          * В случае успеха - список созданных стен, в противном случае - пустой список
          */
-        public static List<Wall> CreateRectangleWall(Document doc,
+        private  List<Wall> CreateRectangleWall(Document doc,
                                                double width,
                                                double depth,
                                                Level levelMin,
