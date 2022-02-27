@@ -50,14 +50,16 @@ namespace RevitAPITreningLibrary
             {
                 list = new FilteredElementCollector(doc, doc.ActiveView.Id)
                     .OfClass(typeof(T))
-                    .Cast<T>()
+                    .OfType<T>()
+                    //.Cast<T>()
                     .ToList();
             }
             else
             {
                 list = new FilteredElementCollector(doc, viewId)
-                .OfClass(typeof(T))
-                .Cast<T>()
+                .OfClass(typeof(T)) 
+                .OfType<T>()
+                //.Cast<T>()
                 .ToList();
             }
 
@@ -76,7 +78,8 @@ namespace RevitAPITreningLibrary
             List<T> list = new FilteredElementCollector(doc)
                 .OfCategory(builtInCategory)
                 .WhereElementIsNotElementType()
-                .Cast<T>()
+                .OfType<T>()
+                //.Cast<T>()
                 .ToList();
 
             return list;
@@ -94,7 +97,8 @@ namespace RevitAPITreningLibrary
             List<T> list = new FilteredElementCollector(doc)
                 .OfCategory(builtInCategory)
                 .WhereElementIsElementType()
-                .Cast<T>()
+                .OfType<T>()
+                //.Cast<T>()
                 .ToList();
 
             return list;

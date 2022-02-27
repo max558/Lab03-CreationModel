@@ -83,6 +83,7 @@
   <ItemGroup>
     <Compile Include="CreationModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Библиотеки\ParametrUtils.cs" />
     <Compile Include="Библиотеки\SelectionUtils.cs" />
   </ItemGroup>
   <ItemGroup>
