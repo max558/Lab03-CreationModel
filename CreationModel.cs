@@ -1,4 +1,5 @@
-﻿using Autodesk.Revit.Attributes;
+﻿using Autodesk.Revit.ApplicationServices;
+using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
@@ -29,13 +30,12 @@ namespace CreationModel
             //Создание коробки из стен
             List<Wall> wallListCreat = CreateRectangleWall(doc, 10000, 5000, level1, level2);
 
-            //вставка двери
+            //Вставка двери
             List<XYZ> pointListDoor = GetPointInstance(doc, wallListCreat[0], null, 0, 0, 0);
             XYZ pointDooor = pointListDoor[0];
             FamilyInstance door = AddInstance(commandData, level1, wallListCreat[0], pointDooor, BuiltInCategory.OST_Doors, "Одиночные-Щитовые", "0915 x 2134 мм");
 
             //Вставка окон
-
             List<FamilyInstance> windowList = new List<FamilyInstance>();
             double widthWindow = UnitUtils.ConvertToInternalUnits(915, UnitTypeId.Millimeters);
             double lengthWindowCorner = UnitUtils.ConvertToInternalUnits(1500, UnitTypeId.Millimeters);
@@ -53,6 +53,11 @@ namespace CreationModel
                 }
             }
 
+            //Создание кровли
+            double offsetRoof = UnitUtils.ConvertToInternalUnits(400, UnitTypeId.Millimeters);
+            double heighrtRoof = UnitUtils.ConvertToInternalUnits(1500, UnitTypeId.Millimeters);
+            //FootPrintRoof roofInstFoot = AddRoof(commandData, level2, wallListCreat, offsetRoof, "Базовая крыша", "Типовой - 125мм");
+            ExtrusionRoof roofInstext = AddRoof(commandData, level2, wallListCreat, offsetRoof, heighrtRoof, "Базовая крыша", "Типовой - 125мм");
 
             //    ts.Commit();
             //}
@@ -246,8 +251,6 @@ namespace CreationModel
                 resPointList = FoundPointInsert(pointStart, pointEnd, widthWindow, lengthWindowCorner, lengthWindowWindow);
             }
 
-
-
             return resPointList;
         }
 
@@ -293,6 +296,143 @@ namespace CreationModel
                 resPointList.Add(point);
             }
             return resPointList;
+        }
+
+        /*
+         *** === Создание кровли по контуру === ***
+         * Входные данные:
+         * commandData - 
+         * level - уровень
+         * wall - список стен
+         * offset - смещение от края стены
+         * nameFamaly - строковое имя семейства
+         * nameInstance - строковое имя типа
+         * Выходные данные:
+         * Экземпляр кровли
+         */
+        private FootPrintRoof AddRoof(ExternalCommandData commandData,
+                                           Level level, List<Wall> wallList, double offset,
+                                           string nameFamaly, string nameInstance)
+        {
+            FootPrintRoof footPrintRoof;
+            Document doc = commandData.Application.ActiveUIDocument.Document;
+            List<RoofType> roofTypes = SelectionUtils.SelectAllElement<RoofType>(commandData);
+            RoofType roofType = roofTypes
+                .Where(x => x.Name.Equals(nameInstance))
+                .Where(x => x.FamilyName.Equals(nameFamaly))
+                .FirstOrDefault();
+
+            double widthWall = wallList[0].Width;
+            double dt = offset + widthWall / 2;
+            List<XYZ> points = new List<XYZ>();
+            points.Add(new XYZ(-dt, dt, 0));
+            points.Add(new XYZ(dt, dt, 0));
+            points.Add(new XYZ(dt, -dt, 0));
+            points.Add(new XYZ(-dt, -dt, 0));
+            points.Add(new XYZ(-dt, dt, 0));
+
+
+            //Создаем отпечаток будущей кровли
+            Application application = doc.Application;
+            CurveArray footPrint = application.Create.NewCurveArray();
+            int index = 0;
+            foreach (var wall in wallList)
+            {
+                LocationCurve curve = wall.Location as LocationCurve;
+                XYZ p1 = curve.Curve.GetEndPoint(0);
+                XYZ p2 = curve.Curve.GetEndPoint(1);
+                Line line = Line.CreateBound(p1 + points[index], p2 + points[index + 1]);
+                footPrint.Append(line);
+                index++;
+            }
+
+
+            ModelCurveArray footPrintToModelCurveMapping = new ModelCurveArray();
+
+            using (Transaction tsa = new Transaction(doc, "Создание кровли"))
+            {
+                tsa.Start();
+                footPrintRoof = doc.Create.NewFootPrintRoof(footPrint, level, roofType, out footPrintToModelCurveMapping);
+                foreach (ModelCurve mc in footPrintToModelCurveMapping)
+                {
+                    footPrintRoof.set_DefinesSlope(mc, true);
+                    footPrintRoof.set_SlopeAngle(mc, 0.5);
+                }
+
+                tsa.Commit();
+            }
+            return footPrintRoof;
+        }
+
+
+        /*
+         *** === Создание кровли с помощью выдавливания === ***
+         * Входные данные:
+         * commandData - 
+         * level - уровень
+         * wall - список стен
+         * offset - смещение от края стены
+         * height - высота конька (расстояние от уровня до конька)
+         * nameFamaly - строковое имя семейства
+         * nameInstance - строковое имя типа
+         * Выходные данные:
+         * Экземпляр кровли
+         */
+        private ExtrusionRoof AddRoof(ExternalCommandData commandData,
+                                           Level level, List<Wall> wallList, double offset, double height,
+                                           string nameFamaly, string nameInstance)
+        {
+            ExtrusionRoof extrusionPrintRoof;
+            Document doc = commandData.Application.ActiveUIDocument.Document;
+            List<RoofType> roofTypes = SelectionUtils.SelectAllElement<RoofType>(commandData);
+            RoofType roofType = roofTypes
+                .Where(x => x.Name.Equals(nameInstance))
+                .Where(x => x.FamilyName.Equals(nameFamaly))
+                .FirstOrDefault();
+
+            //Определение длины стены на которой будет расположена кровля            
+            double dt = offset + wallList[1].Width / 2;
+            Element wallElement1 = doc.GetElement(wallList[1].Id);
+            Parameter lengthWallParam1 = wallElement1.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH);
+            if (lengthWallParam1.StorageType == StorageType.Double)
+            {
+                dt += lengthWallParam1.AsDouble() / 2;
+            }
+
+            //Определение длины стены вдоль которой будет расположена кровля            
+            double extrusion = offset;
+            Element wallElement = doc.GetElement(wallList[0].Id);
+            Parameter lengthWallParam = wallElement.get_Parameter(BuiltInParameter.CURVE_ELEM_LENGTH);
+            if (lengthWallParam.StorageType == StorageType.Double)
+            {
+                extrusion += lengthWallParam.AsDouble() / 2;
+            }
+
+            //Определение цифрового значения уровня относительно 0
+            double heightLevel = 0;
+            Element heightLevelElement = doc.GetElement(level.Id);
+            Parameter heightLevelParam = heightLevelElement.get_Parameter(BuiltInParameter.LEVEL_ELEV);
+            if (heightLevelParam.StorageType == StorageType.Double)
+            {
+                heightLevel += heightLevelParam.AsDouble();
+            }
+
+            //Создание профиля кровли
+            Application application = doc.Application;
+            CurveArray profileRoof = application.Create.NewCurveArray();
+            profileRoof.Append(Line.CreateBound(new XYZ(0, -dt, heightLevel), new XYZ(0, 0, height + heightLevel)));
+            profileRoof.Append(Line.CreateBound(new XYZ(0, 0, height + heightLevel), new XYZ(0, dt, heightLevel)));
+
+            using (Transaction tsa = new Transaction(doc, "Создание кровли"))
+            {
+                tsa.Start();
+                ReferencePlane referencePlane = doc.Create.NewReferencePlane(new XYZ(0, 0, heightLevel), new XYZ(0, 0, dt + heightLevel), new XYZ(0, dt, 0), doc.ActiveView);
+
+                extrusionPrintRoof = doc.Create.NewExtrusionRoof(profileRoof, referencePlane, level, roofType, -extrusion, extrusion);
+
+                tsa.Commit();
+            }
+            return extrusionPrintRoof;
         }
     }
 }
